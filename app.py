@@ -2,9 +2,8 @@
 """
 Aplicación de Gestión de Tareas y Tiempos con Streamlit.
 
-Esta aplicación permite registrar las tareas realizadas por los empleados,
-comparar los tiempos reales con los estipulados y visualizar toda la
-información en un dashboard interactivo y un reporte descargable.
+Versión 2.0: Se añade una pestaña "Acerca de" para mostrar la información
+del autor y de la aplicación, reestructurando la interfaz principal.
 """
 
 import streamlit as st
@@ -154,7 +153,6 @@ def create_performance_chart(df):
     if df.empty:
         return None
     
-    # Calcular promedio de tiempo real y tomar el primer estipulado (suponiendo que es constante)
     performance_df = df.groupby('nombre_tarea').agg(
         tiempo_real_avg=('tiempo_real', 'mean'),
         tiempo_estipulado_avg=('tiempo_estipulado', 'first')
@@ -166,7 +164,6 @@ def create_performance_chart(df):
         var_name='tipo_de_tiempo',
         value_name='minutos'
     )
-    # Renombrar para mayor claridad en la leyenda
     performance_df['tipo_de_tiempo'] = performance_df['tipo_de_tiempo'].map({
         'tiempo_real_avg': 'Promedio Real',
         'tiempo_estipulado_avg': 'Estipulado'
@@ -197,7 +194,6 @@ def generate_excel_report(registros_df):
     df_report['diferencia'] = df_report['tiempo_real'] - df_report['tiempo_estipulado']
     df_report['fecha_registro'] = df_report['fecha_registro'].dt.strftime('%Y-%m-%d %H:%M')
     
-    # Seleccionar y renombrar columnas para el reporte final
     df_report = df_report[[
         'fecha_registro', 'nombre_empleado', 'nombre_tarea',
         'tiempo_estipulado', 'tiempo_real', 'diferencia'
@@ -210,7 +206,6 @@ def generate_excel_report(registros_df):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df_report.to_excel(writer, index=False, sheet_name='Reporte de Tiempos')
-        # Aquí se podría añadir más formato al Excel si se desea
     
     return output.getvalue()
 
@@ -222,22 +217,26 @@ manager = TimeTaskManager()
 registros, tareas = manager.get_all_data()
 
 st.title("🗓️ Gestión de Tareas y Tiempos")
-st.markdown("Registra tareas, analiza la eficiencia y visualiza la carga de trabajo en una línea de tiempo interactiva.")
 
 # --- Pestañas de Navegación ---
-tab_registro, tab_dashboard, tab_reportes = st.tabs(["✍️ Registrar Tarea", "📊 Dashboard de Análisis", "📄 Datos y Reportes"])
+tab_registro, tab_dashboard, tab_reportes, tab_acerca_de = st.tabs([
+    "✍️ Registrar Tarea", 
+    "📊 Dashboard", 
+    "📄 Datos y Reportes",
+    "ℹ️ Acerca de"
+])
 
 # --- Pestaña 1: Registro de Tareas ---
 with tab_registro:
     st.header("Formulario de Registro")
-    
+    st.markdown("Utilice este formulario para añadir un nuevo registro de tiempo para un empleado y una tarea específica.")
+
     with st.form("registro_tarea_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         
         with col1:
             empleado = st.text_input("Nombre del Empleado*", placeholder="Ej: Laura Vargas")
             
-            # Obtener lista de tareas existentes para el selectbox
             tareas_existentes = ["Nueva Tarea..."] + sorted(tareas['nombre_tarea'].unique().tolist())
             tarea_seleccionada = st.selectbox("Nombre de la Tarea*", options=tareas_existentes)
             
@@ -248,10 +247,10 @@ with tab_registro:
                 nombre_tarea_final = tarea_seleccionada
 
         with col2:
-            tiempo_real = st.number_input("Tiempo Real Empleado (minutos)*", min_value=1, step=5)
+            tiempo_real = st.number_input("Tiempo Real Empleado (minutos)*", min_value=0.1, step=1.0, format="%.2f")
             tiempo_estipulado_base = st.number_input(
-                "Tiempo Estipulado Base para este TIPO de Tarea (minutos)",
-                min_value=1, step=10, help="Rellena esto solo si es una nueva tarea o si quieres actualizar el tiempo estándar para este tipo de tarea."
+                "Tiempo Estipulado Base (minutos)",
+                min_value=0.0, step=1.0, format="%.2f", help="Rellena esto solo si es una tarea nueva o si quieres actualizar su tiempo estándar."
             )
         
         submitted = st.form_submit_button("Guardar Registro", type="primary", use_container_width=True)
@@ -265,7 +264,6 @@ with tab_registro:
 with tab_dashboard:
     st.header("Visualización de Datos")
 
-    # Línea de tiempo
     st.subheader("Línea de Tiempo de Productividad")
     timeline_chart = create_timeline_chart(registros)
     if timeline_chart:
@@ -275,7 +273,6 @@ with tab_dashboard:
 
     st.divider()
 
-    # Gráfico de rendimiento
     st.subheader("Análisis de Rendimiento por Tarea")
     performance_chart = create_performance_chart(registros)
     if performance_chart:
@@ -283,15 +280,12 @@ with tab_dashboard:
     else:
         st.info("No hay suficientes datos para generar un análisis de rendimiento.")
 
-
 # --- Pestaña 3: Datos y Reportes ---
 with tab_reportes:
     st.header("Registros y Acciones")
 
     col1, col2 = st.columns([3, 1])
-
     with col1:
-        # Descargar reporte
         st.subheader("Exportar Datos")
         excel_data = generate_excel_report(registros)
         if excel_data:
@@ -306,14 +300,45 @@ with tab_reportes:
             st.info("No hay datos para exportar.")
 
     with col2:
-        # Limpiar datos
         st.subheader("Zona de Peligro")
         if st.button("🗑️ Limpiar Todos los Datos", type="secondary", use_container_width=True, help="Elimina permanentemente todos los registros y definiciones de tareas."):
             manager.clear_all_data()
+            st.rerun()
 
     st.divider()
     
-    # Mostrar tabla de datos
     st.subheader("Tabla de Registros")
     st.dataframe(registros, use_container_width=True)
+
+# --- Pestaña 4: Acerca de ---
+with tab_acerca_de:
+    with st.container(border=True):
+        st.header("Sobre el Autor y la Aplicación")
+        
+        _, center_col, _ = st.columns([1, 1, 1])
+        with center_col:
+            st.image("https://placehold.co/250x250/2B3137/FFFFFF?text=J.S.", width=250, caption="Joseph Javier Sánchez Acuña")
+
+        st.title("Joseph Javier Sánchez Acuña")
+        st.subheader("_Ingeniero Industrial, Experto en Inteligencia Artificial y Desarrollo de Software._")
+        
+        st.markdown("---")
+        
+        st.subheader("Acerca de esta Herramienta")
+        st.markdown("""
+        Esta aplicación fue desarrollada para la **gestión y análisis de tiempos y tareas**. El objetivo es ofrecer a equipos y gerentes una forma visual e interactiva de rastrear la productividad, comparar el desempeño real contra los estándares y exportar datos fácilmente para su posterior análisis.
+
+        Desde el registro de tareas individuales hasta la visualización en un dashboard con líneas de tiempo y gráficos de rendimiento, cada funcionalidad está diseñada para facilitar la toma de decisiones basada en datos y mejorar la eficiencia operativa.
+        """)
+
+        st.markdown("---")
+
+        st.subheader("Contacto y Enlaces Profesionales")
+        st.markdown(
+            """
+            - 🔗 **LinkedIn:** [joseph-javier-sánchez-acuña](https://www.linkedin.com/in/joseph-javier-sánchez-acuña-150410275)
+            - 📂 **GitHub:** [GIUSEPPESAN21](https://github.com/GIUSEPPESAN21)
+            - 📧 **Email:** [joseph.sanchez@uniminuto.edu.co](mailto:joseph.sanchez@uniminuto.edu.co)
+            """
+        )
 
